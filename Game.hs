@@ -3,11 +3,11 @@ module Game where
     
     data Occupant = You | Monster | Bomb | Treasure deriving Show
     
-    type Slot = Maybe Occupant 
-    type FieldRow = [Slot]
-    type Field = [FieldRow]
+    type Space = Maybe Occupant 
+    type Row = [Space]
+    type PlayField = [Row]
 
-    sampleField = [[Nothing, Nothing, Nothing],
+    samplePlayField = [[Nothing, Nothing, Nothing],
                    [Nothing, Just(You), Nothing],
                    [Nothing, Nothing, Nothing]]
 
@@ -16,11 +16,11 @@ module Game where
         hSetEcho stdin False
         hSetBuffering stdin NoBuffering
         hSetBuffering stdout NoBuffering
-        let field = sampleField
+        let field = samplePlayField
         _ <- gameLoop field
         return ()
 
-    gameLoop :: Field -> IO Field
+    gameLoop :: PlayField -> IO PlayField
     gameLoop field = do
         putStrLn "\ESC[2J"
         mapM_ print field
@@ -29,12 +29,12 @@ module Game where
         unlessM (c == 'x') (gameLoop field') (return field')
         
         
-    turn :: Field -> Char -> IO Field
+    turn :: PlayField -> Char -> IO PlayField
     turn f c = case c of
-        'w' -> return $ updateField 0 0 (Just Monster) f
-        'a' -> return $ updateField 0 0 (Just Bomb) f
-        's' -> return $ updateField 0 0 (Just Treasure) f
-        'd' -> return $ updateField 0 0 Nothing f           
+        'w' -> return $ updatePlayField 0 0 (Just Monster) f
+        'a' -> return $ updatePlayField 0 0 (Just Bomb) f
+        's' -> return $ updatePlayField 0 0 (Just Treasure) f
+        'd' -> return $ updatePlayField 0 0 Nothing f           
         'x' -> return f
         _ -> return f
 
@@ -42,10 +42,10 @@ module Game where
     unlessM cond thenM elseM =
         if cond then elseM else thenM
 
-    updateField :: Int -> Int -> Slot -> Field -> Field
-    updateField x y val field = 
+    updatePlayField :: Int -> Int -> Space -> PlayField -> PlayField
+    updatePlayField x y val field = 
         take x field ++ [updateRow y val (field !! x)] ++ drop (x + 1) field
     
-    updateRow :: Int -> Slot ->FieldRow -> FieldRow
+    updateRow :: Int -> Space -> Row -> Row
     updateRow y val row = 
         take y row ++ [val] ++ drop (y + 1) row
