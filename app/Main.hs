@@ -1,10 +1,12 @@
-module Game where
+module Main where
     import System.IO
     import Text.PrettyPrint.Annotated.HughesPJ (renderDecorated, render)
     import System.Directory.Internal.Prelude (getArgs)
     import Data.Map (argSet)
+    import Control.Monad
+    import Control.Monad.Extra
     
-    data Occupant = You | Monster | Bomb | Treasure | Cursor deriving Show
+    data Occupant = You | Monster | Bomb | Treasure deriving Show
     
     type Space = Maybe Occupant 
     type Row = [Space]
@@ -60,7 +62,7 @@ module Game where
         hSetBuffering stdin NoBuffering
         hSetBuffering stdout NoBuffering
         let field = emptyPlayField (dimension params)
-        field' <- unlessM (builder params) (builderLoop params field) (gameLoop params field)
+        field' <- ifM (return $ builder params) (builderLoop params field) (return field)
         _ <- gameLoop params field'
         return ()
 
@@ -75,7 +77,7 @@ module Game where
         putStrLn $ renderPlayField (not (omnipotent params)) field
         c <- getChar
         field' <- turn field c
-        unlessM (c == 'x') (gameLoop params field') (return field')
+        ifM (return $ c == 'x') (return field') (gameLoop params field')
 
     builderLoop :: GameParameters -> PlayField -> IO PlayField
     builderLoop params field = do
@@ -83,11 +85,7 @@ module Game where
         putStrLn $ renderPlayField False field
         c <- getChar
         field' <- buildStep field c
-        unlessM (c == 'x') (builderLoop params field') (return field')
-         
-    unlessM :: Monad m => Bool -> m a -> m a -> m a
-    unlessM cond thenM elseM =
-        if cond then elseM else thenM
+        ifM (return $ c == 'x') (return field') (builderLoop params field')
     
     turn :: PlayField -> Char -> IO PlayField
     turn f c = case c of
@@ -117,12 +115,11 @@ module Game where
     renderRow obsfucate row = "| " ++ unwords (map (obsfucateSpace obsfucate . renderSpace) row) ++ " |"
 
     renderSpace :: Space -> String
-    renderSpace Nothing = "   "
-    renderSpace (Just You) = " Y "
-    renderSpace (Just Monster) = " M "
-    renderSpace (Just Bomb) = " B "
-    renderSpace (Just Treasure) = " T "
-    renderSpace (Just Cursor) = " ^ "
+    renderSpace Nothing = " ⠀⠀ "
+    renderSpace (Just You) = " 😎 "
+    renderSpace (Just Monster) = " 👹 "
+    renderSpace (Just Bomb) = " 💣 "
+    renderSpace (Just Treasure) = " 💰 "
 
     obsfucateSpace :: Bool -> String -> String
     obsfucateSpace enabled = map (if enabled then obsfucateChar else id)
