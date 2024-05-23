@@ -1,14 +1,17 @@
 module Main where
     import System.IO
     import Text.PrettyPrint.Annotated.HughesPJ (renderDecorated, render)
+    import Text.Printf (printf)
+
     import System.Directory.Internal.Prelude (getArgs)
     import Data.Map (argSet)
     import Control.Monad
     import Control.Monad.Extra
     
-    data Occupant = You | Monster | Bomb | Treasure deriving Show
-    
-    type Space = Maybe Occupant 
+    data Space = Empty | You | Monster | Bomb | Treasure
+    data RenderMask = Mask { obfuscate :: Bool, string :: String }
+    data Cursor = Location { col :: Int, row :: Int }
+
     type Row = [Space]
     type PlayField = [Row]
 
@@ -18,15 +21,25 @@ module Main where
         builder :: Bool
     } deriving (Show)
 
+    data GameState = GameState {
+        playfield :: [Row],
+        cursor :: Cursor
+    }
+
+    playMask = Mask { obfuscate = True, string = " %s " }
+    buildMask = Mask { obfuscate = False, string = " %s "}
+    buildCursorMask = Mask { obfuscate = False, string = "[%s]"}
+
+
     devMode :: GameParameters
     devMode = GameParameters { dimension = 7, omnipotent = True, builder = True }
 
     playaMode = GameParameters {dimension = 7, omnipotent = False, builder = False }
 
-    samplePlayField :: [[Maybe Occupant]]
-    samplePlayField = [[Nothing, Nothing, Nothing],
-                   [Nothing, Just(You), Nothing],
-                   [Nothing, Nothing, Nothing]]
+    samplePlayField :: [[Space]]
+    samplePlayField = [[Empty, Empty, Empty],
+                   [Empty, You, Empty],
+                   [Empty, Empty, Empty]]
 
     main :: IO ()
     main = do
@@ -61,70 +74,77 @@ module Main where
         hSetEcho stdin False
         hSetBuffering stdin NoBuffering
         hSetBuffering stdout NoBuffering
-        let field = emptyPlayField (dimension params)
-        field' <- ifM (return $ builder params) (builderLoop params field) (return field)
-        _ <- gameLoop params field'
+        let state = GameState { playfield = emptyPlayField (dimension params), cursor = Location {col = 0, row = 0} }
+        -- let field = emptyPlayField (dimension params)
+        state' <- ifM (return $ builder params) (builderLoop params state) (return state)
+        _ <- gameLoop params state'
         return ()
 
     emptyPlayField :: Int -> PlayField
-    emptyPlayField n = replicate n (replicate n Nothing)
+    emptyPlayField n = replicate n (replicate n Empty)
 
 
-    gameLoop :: GameParameters -> PlayField -> IO PlayField
-    gameLoop params field = do
+    gameLoop :: GameParameters -> GameState -> IO GameState
+    gameLoop params state = do
         putStrLn "\ESC[2J"
         -- mapM_ print field
-        putStrLn $ renderPlayField (not (omnipotent params)) field
+        putStrLn $ renderPlayField (not (omnipotent params)) state
         c <- getChar
-        field' <- turn field c
-        ifM (return $ c == 'x') (return field') (gameLoop params field')
+        state' <- turn state c
+        ifM (return $ c == 'x') (return state') (gameLoop params state')
 
-    builderLoop :: GameParameters -> PlayField -> IO PlayField
-    builderLoop params field = do
+    builderLoop :: GameParameters -> GameState -> IO GameState
+    builderLoop params state = do
         putStrLn "\ESC[2J"
-        putStrLn $ renderPlayField False field
+        putStrLn $ renderPlayField False state
         c <- getChar
-        field' <- buildStep field c
-        ifM (return $ c == 'x') (return field') (builderLoop params field')
+        state' <- buildStep state c
+        ifM (return $ c == 'x') (return state') (builderLoop params state')
     
-    turn :: PlayField -> Char -> IO PlayField
-    turn f c = case c of
-        'w' -> return $ updatePlayField 0 0 (Just Monster) f
-        'a' -> return $ updatePlayField 0 0 (Just Bomb) f
-        's' -> return $ updatePlayField 0 0 (Just Treasure) f
-        'd' -> return $ updatePlayField 0 0 Nothing f           
-        'x' -> return f
-        _ -> return f
+    turn :: GameState -> Char -> IO GameState
+    turn s c = case c of
+        'w' -> return $ updatePlayField 0 0 Monster s
+        'a' -> return $ updatePlayField 0 0 Bomb s
+        's' -> return $ updatePlayField 0 0 Treasure s
+        'd' -> return $ updatePlayField 0 0 Empty s           
+        'x' -> return s
+        _ -> return s
 
     buildStep :: PlayField -> Char -> IO PlayField
     buildStep = undefined
 
-    updatePlayField :: Int -> Int -> Space -> PlayField -> PlayField
-    updatePlayField x y val field = 
-        take x field ++ [updateRow y val (field !! x)] ++ drop (x + 1) field
+    updatePlayField :: Int -> Int -> Space -> GameState -> GameState
+    updatePlayField x y val state = 
+        take x (playfield state) ++ [updateRow y val ((playfield state) !! x)] ++ drop (x + 1) (playfield state)
     
     updateRow :: Int -> Space -> Row -> Row
     updateRow y val row = 
         take y row ++ [val] ++ drop (y + 1) row
 
-    renderPlayField :: Bool -> PlayField -> String
-    renderPlayField obsfucate field = 
-        unlines $ map (renderRow obsfucate) field
+    -- renderPlayField :: Bool -> GameState -> String
+    -- renderPlayField obsfucate state = 
+    --     unlines $ map (renderRow obsfucate (playfield state) (cursorRow state) (cursorCol state))
+    renderPlayField :: Bool -> GameState -> String
+    renderPlayField obsfucate state = 
+        unlines $ map (\r -> renderRow obsfucate r (cursor state)) (playfield state)
 
-    renderRow :: Bool -> Row -> String
-    renderRow obsfucate row = "| " ++ unwords (map (obsfucateSpace obsfucate . renderSpace) row) ++ " |"
+    renderRow :: Bool -> Row -> Cursor -> String
+    renderRow obsfucate r c = "| " ++ unwords (map (obsfucateSpace obsfucate . show) row) ++ " |"
 
-    renderSpace :: Space -> String
-    renderSpace Nothing = " ⠀⠀ "
-    renderSpace (Just You) = " 😎 "
-    renderSpace (Just Monster) = " 👹 "
-    renderSpace (Just Bomb) = " 💣 "
-    renderSpace (Just Treasure) = " 💰 "
+    instance Show Space where
+        show Empty = " ⠀⠀ "
+        show You = " 😎 "
+        show Monster = " 👹 "
+        show Bomb = " 💣 "   
+        show Treasure = " 💰 "
+
+    renderSpace :: GameState -> RenderMask -> Space -> String
+    renderSpace = undefined
 
     obsfucateSpace :: Bool -> String -> String
     obsfucateSpace enabled = map (if enabled then obsfucateChar else id)
         where obsfucateChar ch 
-                | ch == 'B' = '*'
-                | ch == 'M' = '*'
-                | ch == 'T' = '*'
+                | ch == '💣' = '❔'
+                | ch == '👹' = '❔'
+                | ch == '💰' = '❔'
                 | otherwise = ch
