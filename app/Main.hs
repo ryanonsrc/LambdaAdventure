@@ -1,3 +1,7 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+
 module Main where
     import System.IO
     import Text.PrettyPrint.Annotated.HughesPJ (renderDecorated, render)
@@ -9,12 +13,40 @@ module Main where
     import Control.Monad.Extra
 
     data Space = Empty | You | Monster | Bomb | Treasure
-    data RenderMask = Mask { obfuscate :: Bool, withoutCursor :: String, withCursor :: String }
-    data Cursor = Location { col :: Int, row :: Int }
+    data RenderMask' = Mask { obfuscate :: Bool, withoutCursor :: String, withCursor :: String }
+    data Cursor = Location { col :: Int, row :: Int } deriving Eq
     type RenderLocation = Cursor
+
+    class (Show b) => RenderMask a b where
+        renderValue :: a -> b -> String
+        renderChain :: a1 -> b -> a2 -> String
+        renderChain aVal bVal a'Val = renderValue a'Val (renderValue aVal bVal)
+
+
+    instance RenderMask Obfuscate Space where
+        renderValue False = show
+        renderValue True Monster = '❔'
+        renderValue True Bomb = '❔'
+        renderValue True Treasure = '❔'
+        renderValue True sp = show sp
+
+    instance RenderMask (Cursor, RenderLocation) String where
+        renderValue (cur, rloc) s
+            | cur == rloc = printf "[%s]" s
+            | cur /= rloc = printf " %s " s 
+
+
+    {--
+    
+            a1:() -> a2:cursor -> b -> obsmask -> String -> spaceMask
+    
+    
+    --}
+
 
     type Row = [Space]
     type PlayField = [Row]
+    type Obfuscate = Bool
 
     data GameParameters = GameParameters {
         dimension :: Int,
