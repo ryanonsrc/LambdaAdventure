@@ -1,6 +1,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module Main where
     import System.IO
@@ -13,36 +14,10 @@ module Main where
     import Control.Monad.Extra
 
     data Space = Empty | You | Monster | Bomb | Treasure
-    data RenderMask' = Mask { obfuscate :: Bool, withoutCursor :: String, withCursor :: String }
     data Cursor = Location { col :: Int, row :: Int } deriving Eq
     type RenderLocation = Cursor
-
-    class (Show b) => RenderMask a b where
-        renderValue :: a -> b -> String
-        renderChain :: a1 -> b -> a2 -> String
-        renderChain aVal bVal a'Val = renderValue a'Val (renderValue aVal bVal)
-
-
-    instance RenderMask Obfuscate Space where
-        renderValue False = show
-        renderValue True Monster = '❔'
-        renderValue True Bomb = '❔'
-        renderValue True Treasure = '❔'
-        renderValue True sp = show sp
-
-    instance RenderMask (Cursor, RenderLocation) String where
-        renderValue (cur, rloc) s
-            | cur == rloc = printf "[%s]" s
-            | cur /= rloc = printf " %s " s 
-
-
-    {--
-    
-            a1:() -> a2:cursor -> b -> obsmask -> String -> spaceMask
-    
-    
-    --}
-
+    type RowLocation = Int
+    type ColLocation = Int
 
     type Row = [Space]
     type PlayField = [Row]
@@ -59,15 +34,6 @@ module Main where
         playfield :: [Row],
         cursor :: Cursor
     }
-
-    playMask = Mask { obfuscate = True, withCursor = " %s ", withoutCursor = " %s " }
-    buildMask = Mask { obfuscate = False, withCursor = "[%s]", withoutCursor = " %s "}
-
-    effectiveMask :: RenderMask -> GameParameters -> RenderMask
-    effectiveMask m params =
-        Mask { obfuscate = not (omnipotentEnabled params) && obfuscate m, 
-               withCursor = withCursor m, 
-               withoutCursor = withoutCursor m }
 
     samplePlayField :: [[Space]]
     samplePlayField = [[Empty, Empty, Empty],
@@ -153,30 +119,43 @@ module Main where
     updateRow y val row =
         take y row ++ [val] ++ drop (y + 1) row
 
+    class (Show b) => RenderMask a b where
+        renderVal :: a -> b -> String
+
+    instance RenderMask Obfuscate Space where
+        renderVal False s = show s
+        renderVal True Monster = "❔"
+        renderVal True Bomb = "❔"
+        renderVal True Treasure = "❔"
+        renderVal True sp = show sp
+
+    instance RenderMask (Cursor, RenderLocation) String where
+        renderVal :: (Cursor, RenderLocation) -> String -> String
+        renderVal (cur, rloc) s
+            | cur == rloc = printf "[%s]" s
+            | otherwise = printf " %s " s
+
+    renderSpace :: Obfuscate -> Cursor -> RenderLocation -> Space -> String
+    renderSpace obs cur rloc sp = renderVal (cur, rloc) (renderVal obs sp)
+
+
     -- renderPlayField :: Bool -> GameState -> String
     -- renderPlayField obsfucate state = 
     --     unlines $ map (renderRow obsfucate (playfield state) (cursorRow state) (cursorCol state))
     renderPlayField :: Bool -> GameState -> String
-    renderPlayField obsfucate state =
-        unlines $ map (\r -> renderRow obsfucate r (cursor state)) (playfield state)
+    renderPlayField obfuscate state =
+        unlines $ zipWith renderRowAt [0..] (playfield state)
+        -- unlines $ map (\r -> renderRow obfuscate r (cursor state)) (playfield state)
+        where renderRowAt :: RowLocation -> Row -> Cursor -> String
+              renderRowAt rl = renderRow rl obfuscate
 
-    renderRow :: Bool -> Row -> Cursor -> String
-    renderRow obs r c = "| " ++ unwords (map (obsfucateSpace obs . show) r) ++ " |"
-
+    renderRow :: RowLocation -> Obfuscate -> Row -> Cursor -> String
+    renderRow rl obs r c = "| " ++ unwords (zipWith renderSpaceAt [0..] r) ++ " |"
+                         where renderSpaceAt :: ColLocation -> Space -> String
+                               renderSpaceAt column = renderSpace obs c Location { row = rl, col = column}
     instance Show Space where
         show Empty = " ⠀⠀ "
         show You = " 😎 "
         show Monster = " 👹 "
         show Bomb = " 💣 " 
         show Treasure = " 💰 "
-
-    renderSpace :: Cursor -> RenderLocation -> RenderMask -> Space -> String
-    renderSpace = undefined
-
-    obsfucateSpace :: Bool -> String -> String
-    obsfucateSpace enabled = map (if enabled then obsfucateChar else id)
-        where obsfucateChar ch
-                | ch == '💣' = '❔'
-                | ch == '👹' = '❔'
-                | ch == '💰' = '❔'
-                | otherwise = ch
