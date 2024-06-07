@@ -95,9 +95,50 @@ module Main where
     builderLoop state = do
         putStrLn "\ESC[2J"
         putStrLn $ renderPlayField False state
-        c <- getChar
-        state' <- buildStep state c
-        ifM (return $ c == 'x') (return state') (builderLoop state')
+        i <- readInput
+        state' <- buildStep state i
+        ifM (return $ i == Exit) (return state') (builderLoop state')
+        where readInput :: IO Input
+              readInput = do
+                            input <- getChar
+                            case input of
+                                '\ESC' -> do
+                                    c2 <- getChar
+                                    case c2 of
+                                        '[' -> do
+                                            c3 <- getChar
+                                            case c3 of
+                                                'A' -> return Up
+                                                'B' -> return Down
+                                                'C' -> return Right
+                                                'D' -> return Left
+                                                _   -> return Unknown
+                                        _   -> return Unknown
+                                'w'      -> return PlaceMonster
+                                'a'      -> return PlaceBomb
+                                's'      -> return PlaceTreasure
+                                'd'      -> return ClearSpace
+                                'x'      -> return Exit
+                                _        -> return Unknown
+
+    data Input = UpArrow | DownArrow | LeftArrow | RightArrow | PlaceMonster | PlaceTreasure | PlaceBomb | ClearSpace | Exit | Unknown deriving (Eq, Show)
+
+    updateCursor :: GameState -> Input -> IO GameState
+    updateCursor gs@(GameState (GameParameters d oe be) pf (Location c r)) dir = case dir of
+        UpArrow -> if r > 0 then return $ newGameState (r - 1) c else return gs
+        DownArrow -> if r < d then return $ newGameState (r + 1) c else return gs 
+        LeftArrow -> if c > 0 then return $ newGameState r (c - 1) else return gs
+        RightArrow -> if c < d then return $ newGameState r (c + 1) else return gs
+        _ -> return gs
+        where newGameState r' c' = GameState {
+                                    playfield = pf, 
+                                    cursor = Location {col = c', row = r'}, 
+                                    params = GameParameters { 
+                                        dimension = d, 
+                                        omnipotentEnabled = oe, 
+                                        builderEnabled = be
+                                    }
+                                }
 
     turn :: GameState -> Char -> IO GameState
     turn s c = case c of
@@ -108,8 +149,25 @@ module Main where
         'x' -> return s
         _ -> return s
 
-    buildStep :: GameState -> Char -> IO GameState
-    buildStep = undefined
+    buildStep :: GameState -> Input -> IO GameState
+    buildStep gs i = do
+                        gs' <- updateCursor gs i
+                        case i of
+                            ClearSpace -> undefined
+                            PlaceBomb -> undefined
+                            PlaceMonster -> undefined
+                            PlaceTreasure -> undefined
+                            _ -> return gs'
+                     where updatePlayfield :: GameState -> Space -> GameState
+                           updatePlayfield gs@(GameState (GameParameters d oe be) pf (Location c r)) sp = GameState {
+                                    playfield = pf, 
+                                    cursor = Location {col = c', row = r'}, 
+                                    params = GameParameters { 
+                                        dimension = d, 
+                                        omnipotentEnabled = oe, 
+                                        builderEnabled = be
+                                    }
+                                }
 
     updateGameState :: Int -> Int -> Space -> GameState -> GameState
     updateGameState x y val state = GameState { playfield = newPlayfield, cursor = cursor state, params = params state}
@@ -136,23 +194,18 @@ module Main where
             | otherwise = printf " %s " s
 
     renderSpace :: Obfuscate -> Cursor -> RenderLocation -> Space -> String
-    renderSpace obs cur rloc sp = renderVal (cur, rloc) (renderVal obs sp)
+    renderSpace obf cur rloc sp = renderVal (cur, rloc) (renderVal obf sp)
 
 
-    -- renderPlayField :: Bool -> GameState -> String
-    -- renderPlayField obsfucate state = 
-    --     unlines $ map (renderRow obsfucate (playfield state) (cursorRow state) (cursorCol state))
     renderPlayField :: Bool -> GameState -> String
     renderPlayField obfuscate state =
-        unlines $ zipWith renderRowAt [0..] (playfield state)
-        -- unlines $ map (\r -> renderRow obfuscate r (cursor state)) (playfield state)
-        where renderRowAt :: RowLocation -> Row -> Cursor -> String
-              renderRowAt rl = renderRow rl obfuscate
+        unlines $ zipWith (renderRow obfuscate (cursor state)) [0..] (playfield state)
+        
 
-    renderRow :: RowLocation -> Obfuscate -> Row -> Cursor -> String
-    renderRow rl obs r c = "| " ++ unwords (zipWith renderSpaceAt [0..] r) ++ " |"
+    renderRow :: Obfuscate -> Cursor -> RowLocation -> Row -> String
+    renderRow obf c rl r = "| " ++ unwords (zipWith renderSpaceAt [0..] r) ++ " |"
                          where renderSpaceAt :: ColLocation -> Space -> String
-                               renderSpaceAt column = renderSpace obs c Location { row = rl, col = column}
+                               renderSpaceAt column = renderSpace obf c Location { row = rl, col = column}
     instance Show Space where
         show Empty = " ⠀⠀ "
         show You = " 😎 "
