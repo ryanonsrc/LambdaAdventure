@@ -75,7 +75,7 @@ module Main where
         hSetBuffering stdout NoBuffering
         let state = GameState { playfield = emptyPlayField (dimension p), cursor = Location {col = 0, row = 0}, params = p }
         state' <- ifM (return $ builderEnabled (params state)) (builderLoop state) (return state)
-        _ <- gameLoop state'
+        -- _ <- gameLoop state'
         return ()
 
     emptyPlayField :: Int -> PlayField
@@ -88,8 +88,9 @@ module Main where
         -- mapM_ print field
         putStrLn $ renderPlayField (not (omnipotentEnabled (params state))) state
         c <- getChar
-        state' <- turn state c
-        ifM (return $ c == 'x') (return state') (gameLoop state')
+        -- state' <- turn state c
+        -- ifM (return $ c == 'x') (return state') (gameLoop state')
+        return state
 
     builderLoop :: GameState -> IO GameState
     builderLoop state = do
@@ -108,10 +109,10 @@ module Main where
                                         '[' -> do
                                             c3 <- getChar
                                             case c3 of
-                                                'A' -> return Up
-                                                'B' -> return Down
-                                                'C' -> return Right
-                                                'D' -> return Left
+                                                'A' -> return UpArrow
+                                                'B' -> return DownArrow
+                                                'C' -> return RightArrow
+                                                'D' -> return LeftArrow
                                                 _   -> return Unknown
                                         _   -> return Unknown
                                 'w'      -> return PlaceMonster
@@ -140,42 +141,31 @@ module Main where
                                     }
                                 }
 
-    turn :: GameState -> Char -> IO GameState
-    turn s c = case c of
-        'w' -> return $ updateGameState 0 0 Monster s
-        'a' -> return $ updateGameState 0 0 Bomb s
-        's' -> return $ updateGameState 0 0 Treasure s
-        'd' -> return $ updateGameState 0 0 Empty s
-        'x' -> return s
-        _ -> return s
-
     buildStep :: GameState -> Input -> IO GameState
     buildStep gs i = do
                         gs' <- updateCursor gs i
                         case i of
-                            ClearSpace -> undefined
-                            PlaceBomb -> undefined
-                            PlaceMonster -> undefined
-                            PlaceTreasure -> undefined
+                            ClearSpace -> return $ updatePlayfield gs' Empty
+                            PlaceBomb -> return $ updatePlayfield gs' Bomb
+                            PlaceMonster -> return $ updatePlayfield gs' Monster
+                            PlaceTreasure -> return $ updatePlayfield gs' Treasure
                             _ -> return gs'
                      where updatePlayfield :: GameState -> Space -> GameState
-                           updatePlayfield gs@(GameState (GameParameters d oe be) pf (Location c r)) sp = GameState {
-                                    playfield = pf, 
-                                    cursor = Location {col = c', row = r'}, 
+                           updatePlayfield (GameState (GameParameters d oe be) pf c) sp = GameState {
+                                    playfield = placeOnPlayfield c sp pf, 
+                                    cursor = c, 
                                     params = GameParameters { 
                                         dimension = d, 
                                         omnipotentEnabled = oe, 
                                         builderEnabled = be
                                     }
                                 }
-
-    updateGameState :: Int -> Int -> Space -> GameState -> GameState
-    updateGameState x y val state = GameState { playfield = newPlayfield, cursor = cursor state, params = params state}
-        where newPlayfield = take x (playfield state) ++ [updateRow y val (playfield state !! x)] ++ drop (x + 1) (playfield state)
+                           
+    placeOnPlayfield :: Cursor -> Space -> PlayField -> PlayField
+    placeOnPlayfield (Location c r) sp pf = take r pf ++ [updateRow c sp (pf !! r)] ++ drop (r + 1) pf
 
     updateRow :: Int -> Space -> Row -> Row
-    updateRow y val row =
-        take y row ++ [val] ++ drop (y + 1) row
+    updateRow y val r = take y r ++ [val] ++ drop (y + 1) r
 
     class (Show b) => RenderMask a b where
         renderVal :: a -> b -> String
