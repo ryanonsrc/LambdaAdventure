@@ -13,7 +13,7 @@ module Main where
     import Control.Monad
     import Control.Monad.Extra
 
-    data Space = Empty | You | Monster | Bomb | Treasure
+    data Space = Empty | You | Monster | Bomb | Treasure | Brick
     data Cursor = Location { col :: Int, row :: Int } deriving Eq
     type RenderLocation = Cursor
     type RowLocation = Int
@@ -32,7 +32,9 @@ module Main where
     data GameState = GameState {
         params :: GameParameters,
         playfield :: [Row],
-        cursor :: Cursor
+        cursor :: Cursor,
+        messageBoard :: String,
+        gameOver :: Bool
     }
 
     samplePlayField :: [[Space]]
@@ -73,9 +75,9 @@ module Main where
         hSetEcho stdin False
         hSetBuffering stdin NoBuffering
         hSetBuffering stdout NoBuffering
-        let state = GameState { playfield = emptyPlayField (dimension p), cursor = Location {col = 0, row = 0}, params = p }
+        let state = GameState { playfield = emptyPlayField (dimension p), cursor = Location {col = 0, row = 0}, params = p, messageBoard = "", gameOver = False }
         state' <- ifM (return $ builderEnabled (params state)) (builderLoop state) (return state)
-        -- _ <- gameLoop state'
+        _ <- gameLoop state'
         return ()
 
     emptyPlayField :: Int -> PlayField
@@ -85,12 +87,17 @@ module Main where
     gameLoop :: GameState -> IO GameState
     gameLoop state = do
         putStrLn "\ESC[2J"
-        -- mapM_ print field
         putStrLn $ renderPlayField (not (omnipotentEnabled (params state))) state
-        c <- getChar
-        -- state' <- turn state c
-        -- ifM (return $ c == 'x') (return state') (gameLoop state')
-        return state
+        state' <- yourTurn state
+        state'' <- theirTurn state'
+        ifM (return $ c == 'x') (return state'') (gameLoop state'')
+        
+    yourTurn :: GameState -> IO GameState
+    yourTurn = undefined
+
+    theirTurn :: GameState -> IO GameState
+    theirTurn = undefined
+
 
     builderLoop :: GameState -> IO GameState
     builderLoop state = do
@@ -119,17 +126,18 @@ module Main where
                                 'a'      -> return PlaceBomb
                                 's'      -> return PlaceTreasure
                                 'd'      -> return ClearSpace
+                                'q'      -> return PlaceBrick   
                                 'x'      -> return Exit
                                 _        -> return Unknown
 
-    data Input = UpArrow | DownArrow | LeftArrow | RightArrow | PlaceMonster | PlaceTreasure | PlaceBomb | ClearSpace | Exit | Unknown deriving (Eq, Show)
+    data Input = UpArrow | DownArrow | LeftArrow | RightArrow | PlaceMonster | PlaceTreasure | PlaceBomb | PlaceBrick | ClearSpace | Exit | Unknown deriving (Eq, Show)
 
     updateCursor :: GameState -> Input -> IO GameState
-    updateCursor gs@(GameState (GameParameters d oe be) pf (Location c r)) dir = case dir of
+    updateCursor gs@(GameState (GameParameters d oe be) pf (Location c r) mb gmo) dir = case dir of
         UpArrow -> if r > 0 then return $ newGameState (r - 1) c else return gs
-        DownArrow -> if r < d then return $ newGameState (r + 1) c else return gs 
+        DownArrow -> if r < (d - 1) then return $ newGameState (r + 1) c else return gs 
         LeftArrow -> if c > 0 then return $ newGameState r (c - 1) else return gs
-        RightArrow -> if c < d then return $ newGameState r (c + 1) else return gs
+        RightArrow -> if c < (d - 1) then return $ newGameState r (c + 1) else return gs
         _ -> return gs
         where newGameState r' c' = GameState {
                                     playfield = pf, 
@@ -138,7 +146,9 @@ module Main where
                                         dimension = d, 
                                         omnipotentEnabled = oe, 
                                         builderEnabled = be
-                                    }
+                                    },
+                                    messageBoard = mb,
+                                    gameOver = gmo
                                 }
 
     buildStep :: GameState -> Input -> IO GameState
@@ -149,16 +159,19 @@ module Main where
                             PlaceBomb -> return $ updatePlayfield gs' Bomb
                             PlaceMonster -> return $ updatePlayfield gs' Monster
                             PlaceTreasure -> return $ updatePlayfield gs' Treasure
+                            PlaceBrick -> return $ updatePlayfield gs' Brick
                             _ -> return gs'
                      where updatePlayfield :: GameState -> Space -> GameState
-                           updatePlayfield (GameState (GameParameters d oe be) pf c) sp = GameState {
+                           updatePlayfield (GameState (GameParameters d oe be) pf c mb gmo) sp = GameState {
                                     playfield = placeOnPlayfield c sp pf, 
                                     cursor = c, 
                                     params = GameParameters { 
                                         dimension = d, 
                                         omnipotentEnabled = oe, 
                                         builderEnabled = be
-                                    }
+                                    },
+                                    messageBoard = mb,
+                                    gameOver = gmo
                                 }
                            
     placeOnPlayfield :: Cursor -> Space -> PlayField -> PlayField
@@ -202,3 +215,4 @@ module Main where
         show Monster = " 👹 "
         show Bomb = " 💣 " 
         show Treasure = " 💰 "
+        show Brick = " 🧱 "
